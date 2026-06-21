@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LandBridge Georgia</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #fafaf9; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ── Config ────────────────────────────────────────────────────────────────
+    const SUPABASE_URL  = 'https://fsarjuuqhvkzzddfxuet.supabase.co';
+    const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzYXJqdXVxaHZrenpkZGZ4dWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5ODUyMDAsImV4cCI6MjA5NzU2MTIwMH0.V838tlDfnHWOnF6RUNoDg3QAO4MlaYJ7gX8dE7X2Aa4';
+    const ADMIN_PASSWORD = 'landbridge2026';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+    const STAGES = ['New Lead','Contacted','Under Contract','Buyer Matched','Assigned / Closed'];
+    const COUNTIES_WEST = ['Carroll','Paulding','Douglas','Haralson','Troup'];
+    const COUNTIES_SW   = ['Decatur','Thomas','Lowndes','Dougherty','Colquitt'];
+    const ALL_COUNTIES  = [...COUNTIES_WEST, ...COUNTIES_SW];
+    const STAGE_COLORS  = {
+      'New Lead':          'bg-slate-100 text-slate-700',
+      'Contacted':         'bg-blue-100 text-blue-700',
+      'Under Contract':    'bg-amber-100 text-amber-800',
+      'Buyer Matched':     'bg-purple-100 text-purple-700',
+      'Assigned / Closed': 'bg-emerald-100 text-emerald-700',
+    };
+
+    const fmt$ = (n) => n != null ? `$${Number(n).toLocaleString()}` : '—';
+    const today = () => new Date().toISOString().slice(0, 10);
+
+    // ── Shared UI ─────────────────────────────────────────────────────────────
+    function Badge({ stage }) {
+      return (
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600'}`}>
+          {stage}
+        </span>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return <div className={`bg-white rounded-2xl shadow-sm border border-stone-200 ${className}`}>{children}</div>;
+    }
+
+    function Input({ label, ...props }) {
+      return (
+        <div className="flex flex-col gap-1">
+          {label && <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide">{label}</label>}
+          <input className="border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" {...props} />
+        </div>
+      );
+    }
+
+    function Sel({ label, children, ...props }) {
+      return (
+        <div className="flex flex-col gap-1">
+          {label && <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide">{label}</label>}
+          <select className="border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" {...props}>
+            {children}
+          </select>
+        </div>
+      );
+    }
+
+    function Textarea({ label, ...props }) {
+      return (
+        <div className="flex flex-col gap-1">
+          {label && <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide">{label}</label>}
+          <textarea className="border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white resize-none" rows={3} {...props} />
+        </div>
+      );
+    }
+
+    function Spinner() {
+      return (
+        <div className="flex justify-center py-16">
+          <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      );
+    }
+
+    // ── Password Gate ─────────────────────────────────────────────────────────
+    function PasswordGate({ onUnlock }) {
+      const [pw, setPw] = useState('');
+      const [err, setErr] = useState(false);
+
+      const tryLogin = () => {
+        if (pw === ADMIN_PASSWORD) { onUnlock(); }
+        else { setErr(true); setPw(''); }
+      };
+
+      return (
+        <div className="min-h-screen bg-stone-900 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-xs shadow-xl">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-3">🔐</div>
+              <h2 className="text-lg font-bold text-stone-800">Admin Access</h2>
+              <p className="text-stone-400 text-sm mt-1">Enter your password to manage deals</p>
+            </div>
+            <input
+              type="password"
+              placeholder="Password"
+              value={pw}
+              onChange={e => { setPw(e.target.value); setErr(false); }}
+              onKeyDown={e => e.key === 'Enter' && tryLogin()}
+              className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            {err && <p className="text-red-500 text-xs mb-2">Incorrect password. Try again.</p>}
+            <button
+              onClick={tryLogin}
+              className="w-full bg-amber-400 hover:bg-amber-500 text-stone-900 font-bold py-2.5 rounded-xl text-sm mt-1 transition-colors"
+            >
+              Enter Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Public: Seller Form ───────────────────────────────────────────────────
+    function SellerPage({ onSubmit }) {
+      const [form, setForm] = useState({ name:'', phone:'', county:'', acres:'', askingPrice:'', notes:'' });
+      const [submitted, setSubmitted] = useState(false);
+      const [saving, setSaving] = useState(false);
+
+      const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+      const handleSubmit = async () => {
+        if (!form.name || !form.phone || !form.county) return alert('Please fill in name, phone, and county.');
+        setSaving(true);
+        await onSubmit({ ...form, acres: parseFloat(form.acres)||0, askingPrice: parseFloat(form.askingPrice)||0 });
+        setSaving(false);
+        setSubmitted(true);
+      };
+
+      if (submitted) return (
+        <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+          <div className="text-center max-w-md">
+            <div className="text-5xl mb-4">✅</div>
+            <h2 className="text-2xl font-bold text-stone-800 mb-2">We received your info.</h2>
+            <p className="text-stone-500">Someone from our team will reach out within 24 hours. No pressure, no obligation.</p>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-stone-50">
+          <div className="bg-stone-900 text-white px-6 py-16 text-center">
+            <p className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-3">Land Buyers — Georgia</p>
+            <h1 className="text-4xl font-extrabold leading-tight mb-4">Sell Your Land.<br />Fast, Simple, Cash.</h1>
+            <p className="text-stone-400 text-base max-w-sm mx-auto">No listings. No agents. No waiting. We connect with motivated sellers directly.</p>
+          </div>
+          <div className="bg-amber-400 px-6 py-3 flex justify-center gap-8 text-stone-900 text-xs font-bold uppercase tracking-wide flex-wrap">
+            <span>✓ No Agent Fees</span><span>✓ Cash Offers</span><span>✓ Close in 30 Days</span>
+          </div>
+          <div className="max-w-lg mx-auto px-6 py-10">
+            <Card className="p-6">
+              <h2 className="text-lg font-bold text-stone-800 mb-1">Tell us about your land</h2>
+              <p className="text-stone-400 text-sm mb-6">Fill this out and we'll be in touch within 24 hours.</p>
+              <div className="grid grid-cols-1 gap-4">
+                <Input label="Full Name *" placeholder="John Smith" value={form.name} onChange={set('name')} />
+                <Input label="Phone Number *" placeholder="229-555-0000" type="tel" value={form.phone} onChange={set('phone')} />
+                <Sel label="County *" value={form.county} onChange={set('county')}>
+                  <option value="">Select county…</option>
+                  <optgroup label="West Georgia">{COUNTIES_WEST.map(c => <option key={c}>{c}</option>)}</optgroup>
+                  <optgroup label="Southwest Georgia">{COUNTIES_SW.map(c => <option key={c}>{c}</option>)}</optgroup>
+                </Sel>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Approx. Acres" placeholder="10" type="number" value={form.acres} onChange={set('acres')} />
+                  <Input label="Asking Price ($)" placeholder="50000" type="number" value={form.askingPrice} onChange={set('askingPrice')} />
+                </div>
+                <Textarea label="Anything else we should know?" placeholder="Inherited land, behind on taxes, ready to close fast…" value={form.notes} onChange={set('notes')} />
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                className="mt-6 w-full bg-amber-400 hover:bg-amber-500 disabled:opacity-60 text-stone-900 font-bold py-3 rounded-xl text-sm transition-colors"
+              >
+                {saving ? 'Sending…' : 'Get My Cash Offer →'}
+              </button>
+              <p className="text-center text-xs text-stone-400 mt-3">No obligation. We don't share your info.</p>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Public: Buyer Form ────────────────────────────────────────────────────
+    function BuyerPage({ onSubmit }) {
+      const [form, setForm] = useState({ name:'', contact:'', phone:'', email:'', minAcres:'', maxBudget:'', counties:[] });
+      const [submitted, setSubmitted] = useState(false);
+      const [saving, setSaving] = useState(false);
+
+      const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+      const toggleCounty = c => setForm(f => ({
+        ...f, counties: f.counties.includes(c) ? f.counties.filter(x => x !== c) : [...f.counties, c]
+      }));
+
+      const handleSubmit = async () => {
+        if (!form.name || !form.contact || !form.phone) return alert('Please fill in company name, contact, and phone.');
+        setSaving(true);
+        await onSubmit({ ...form, minAcres: parseFloat(form.minAcres)||0, maxBudget: parseFloat(form.maxBudget)||0 });
+        setSaving(false);
+        setSubmitted(true);
+      };
+
+      if (submitted) return (
+        <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+          <div className="text-center max-w-md">
+            <div className="text-5xl mb-4">🤝</div>
+            <h2 className="text-2xl font-bold text-stone-800 mb-2">You're on the list.</h2>
+            <p className="text-stone-500">We'll reach out the moment we have a deal that fits your criteria.</p>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-stone-50">
+          <div className="bg-stone-900 text-white px-6 py-14 text-center">
+            <p className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-3">Builder & Investor Buyers</p>
+            <h1 className="text-3xl font-extrabold mb-3">Get Off-Market Land Deals First</h1>
+            <p className="text-stone-400 text-sm max-w-sm mx-auto">We bring you motivated sellers in your target counties before the property hits the market.</p>
+          </div>
+          <div className="max-w-lg mx-auto px-6 py-10">
+            <Card className="p-6">
+              <h2 className="text-lg font-bold text-stone-800 mb-1">Join the buyer list</h2>
+              <p className="text-stone-400 text-sm mb-6">Tell us what you're looking for and we'll match deals to you.</p>
+              <div className="grid grid-cols-1 gap-4">
+                <Input label="Company Name *" placeholder="Smith Douglas Homes" value={form.name} onChange={set('name')} />
+                <Input label="Your Name *" placeholder="Marcus Powell" value={form.contact} onChange={set('contact')} />
+                <Input label="Phone *" placeholder="770-555-0000" type="tel" value={form.phone} onChange={set('phone')} />
+                <Input label="Email" placeholder="you@company.com" type="email" value={form.email} onChange={set('email')} />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Min Acres" placeholder="5" type="number" value={form.minAcres} onChange={set('minAcres')} />
+                  <Input label="Max Budget ($)" placeholder="250000" type="number" value={form.maxBudget} onChange={set('maxBudget')} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide block mb-2">Target Counties</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_COUNTIES.map(c => (
+                      <button key={c} onClick={() => toggleCounty(c)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${form.counties.includes(c) ? 'bg-amber-400 border-amber-400 text-stone-900' : 'bg-white border-stone-300 text-stone-600 hover:border-amber-400'}`}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button onClick={handleSubmit} disabled={saving}
+                className="mt-6 w-full bg-amber-400 hover:bg-amber-500 disabled:opacity-60 text-stone-900 font-bold py-3 rounded-xl text-sm transition-colors">
+                {saving ? 'Saving…' : 'Get Deal Alerts →'}
+              </button>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Admin: Deal Modal ─────────────────────────────────────────────────────
+    function DealModal({ deal, onSave, onClose, saving }) {
+      const [form, setForm] = useState(deal || {
+        sellerName:'', county:'', acres:'', contractPrice:'', assignFee:'',
+        buyerName:'', stage:'Under Contract', contractDate: today(), notes:''
+      });
+      const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+      const cp = parseFloat(form.contractPrice)||0;
+      const af = parseFloat(form.assignFee)||0;
+
+      return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-bold text-stone-800">{deal ? 'Edit Deal' : 'New Deal'}</h3>
+              <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-xl">✕</button>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <Input label="Seller Name *" value={form.sellerName} onChange={set('sellerName')} />
+              <Sel label="County *" value={form.county} onChange={set('county')}>
+                <option value="">Select county…</option>
+                {ALL_COUNTIES.map(c => <option key={c}>{c}</option>)}
+              </Sel>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Acres" type="number" value={form.acres} onChange={set('acres')} />
+                <Input label="Contract Price ($)" type="number" value={form.contractPrice} onChange={set('contractPrice')} />
+                <Input label="Assignment Fee ($)" type="number" value={form.assignFee} onChange={set('assignFee')} />
+              </div>
+              {(cp > 0 || af > 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm">
+                  <div className="flex justify-between text-stone-600"><span>Buyer pays</span><span className="font-semibold">{fmt$(cp + af)}</span></div>
+                  <div className="flex justify-between text-stone-600"><span>Seller contract</span><span className="font-semibold">{fmt$(cp)}</span></div>
+                  <div className="flex justify-between text-emerald-700 font-bold border-t border-amber-200 mt-2 pt-2">
+                    <span>Your assignment fee</span><span>{fmt$(af)}</span>
+                  </div>
+                </div>
+              )}
+              <Input label="Buyer (Company)" value={form.buyerName||''} onChange={set('buyerName')} placeholder="Smith Douglas Homes" />
+              <Sel label="Stage" value={form.stage} onChange={set('stage')}>
+                {STAGES.map(s => <option key={s}>{s}</option>)}
+              </Sel>
+              <Input label="Contract Date" type="date" value={form.contractDate} onChange={set('contractDate')} />
+              <Textarea label="Notes" value={form.notes} onChange={set('notes')} />
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => onSave(form)} disabled={saving}
+                className="flex-1 bg-amber-400 hover:bg-amber-500 disabled:opacity-60 text-stone-900 font-bold py-2.5 rounded-xl text-sm transition-colors">
+                {saving ? 'Saving…' : 'Save Deal'}
+              </button>
+              <button onClick={onClose} className="px-4 py-2.5 border border-stone-300 rounded-xl text-sm text-stone-600 hover:bg-stone-50">Cancel</button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // ── Admin: Pipeline ───────────────────────────────────────────────────────
+    function PipelineView({ deals, loading, onEdit, onAddDeal, onStageChange }) {
+      const totalFees  = deals.reduce((s, d) => s + (d.assignFee||0), 0);
+      const closedFees = deals.filter(d => d.stage === 'Assigned / Closed').reduce((s, d) => s + (d.assignFee||0), 0);
+      const active     = deals.filter(d => d.stage !== 'Assigned / Closed').length;
+
+      return (
+        <div>
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {[['Active Deals', active], ['Pipeline Fees', fmt$(totalFees)], ['Closed Fees', fmt$(closedFees)]].map(([l, v]) => (
+              <Card key={l} className="p-4 text-center">
+                <div className="text-2xl font-extrabold text-stone-800">{v}</div>
+                <div className="text-xs text-stone-400 font-semibold uppercase tracking-wide mt-0.5">{l}</div>
+              </Card>
+            ))}
+          </div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-stone-800">Deal Pipeline</h2>
+            <button onClick={onAddDeal} className="bg-amber-400 hover:bg-amber-500 text-stone-900 font-bold px-4 py-2 rounded-xl text-sm transition-colors">+ New Deal</button>
+          </div>
+          {loading ? <Spinner /> : deals.length === 0 ? (
+            <Card className="p-10 text-center text-stone-400"><div className="text-3xl mb-2">📋</div><p className="text-sm">No deals yet. Add your first deal above.</p></Card>
+          ) : (
+            <div className="space-y-3">
+              {deals.map(d => (
+                <Card key={d.id} className="p-4">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-bold text-stone-800 text-sm">{d.sellerName}</span>
+                        <span className="text-stone-400 text-xs">·</span>
+                        <span className="text-stone-500 text-xs">{d.county} Co.</span>
+                        <span className="text-stone-400 text-xs">·</span>
+                        <span className="text-stone-500 text-xs">{d.acres} ac</span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <Badge stage={d.stage} />
+                        {d.assignFee > 0 && <span className="text-emerald-600 text-xs font-bold">Fee: {fmt$(d.assignFee)}</span>}
+                        {d.buyerName && <span className="text-purple-600 text-xs">→ {d.buyerName}</span>}
+                      </div>
+                      {d.notes && <p className="text-xs text-stone-400 mt-1.5 truncate">{d.notes}</p>}
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <button onClick={() => onEdit(d)} className="text-xs border border-stone-300 rounded-lg px-3 py-1 hover:bg-stone-50 text-stone-600">Edit</button>
+                      <select value={d.stage} onChange={e => onStageChange(d.id, e.target.value)}
+                        className="text-xs border border-stone-300 rounded-lg px-2 py-1 bg-white text-stone-600 focus:outline-none focus:ring-1 focus:ring-amber-400">
+                        {STAGES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Admin: Sellers ────────────────────────────────────────────────────────
+    function SellersView({ sellers, loading }) {
+      return (
+        <div>
+          <h2 className="text-lg font-bold text-stone-800 mb-4">Seller Leads <span className="text-stone-400 font-normal text-base">({sellers.length})</span></h2>
+          {loading ? <Spinner /> : sellers.length === 0 ? (
+            <Card className="p-10 text-center text-stone-400 text-sm">No seller leads yet. Share your public link to start collecting them.</Card>
+          ) : (
+            <div className="space-y-3">
+              {sellers.map(s => (
+                <Card key={s.id} className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-stone-800 text-sm">{s.name}</div>
+                      <div className="text-xs text-stone-500 mt-0.5">{s.phone} · {s.county} Co. · {s.acres} acres</div>
+                      {s.askingPrice > 0 && <div className="text-xs text-stone-500">Asking {fmt$(s.askingPrice)}</div>}
+                      {s.notes && <div className="text-xs text-stone-400 mt-1">{s.notes}</div>}
+                    </div>
+                    <div className="text-xs text-stone-300 shrink-0 ml-4">{s.submitted}</div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Admin: Buyers ─────────────────────────────────────────────────────────
+    function BuyersView({ buyers, loading }) {
+      return (
+        <div>
+          <h2 className="text-lg font-bold text-stone-800 mb-4">Buyer List <span className="text-stone-400 font-normal text-base">({buyers.length})</span></h2>
+          {loading ? <Spinner /> : buyers.length === 0 ? (
+            <Card className="p-10 text-center text-stone-400 text-sm">No buyers yet.</Card>
+          ) : (
+            <div className="space-y-3">
+              {buyers.map(b => (
+                <Card key={b.id} className="p-4">
+                  <div className="font-bold text-stone-800 text-sm">{b.name}</div>
+                  <div className="text-xs text-stone-500 mt-0.5">{b.contact} · {b.phone}</div>
+                  {b.email && <div className="text-xs text-stone-500">{b.email}</div>}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(b.counties||[]).map(c => (
+                      <span key={c} className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full">{c}</span>
+                    ))}
+                  </div>
+                  <div className="text-xs text-stone-400 mt-1.5">Min {b.minAcres} ac · Budget up to {fmt$(b.maxBudget)}</div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Admin: Calculator ─────────────────────────────────────────────────────
+    function CalcView() {
+      const [cp, setCp] = useState('');
+      const [sp, setSp] = useState('');
+      const fee = (parseFloat(sp)||0) - (parseFloat(cp)||0);
+      const margin = sp && cp ? ((fee / (parseFloat(sp)||1)) * 100).toFixed(1) : null;
+
+      return (
+        <div>
+          <h2 className="text-lg font-bold text-stone-800 mb-1">Assignment Fee Calculator</h2>
+          <p className="text-stone-400 text-sm mb-6">Enter your contract price and the price you're assigning to your buyer.</p>
+          <Card className="p-6 max-w-sm">
+            <div className="space-y-4">
+              <Input label="Your Contract Price (from Seller)" type="number" placeholder="36000" value={cp} onChange={e => setCp(e.target.value)} />
+              <Input label="Assignment Price (to Buyer)" type="number" placeholder="45000" value={sp} onChange={e => setSp(e.target.value)} />
+            </div>
+            {fee > 0 && (
+              <div className="mt-5 bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between text-sm text-stone-600"><span>Buyer pays</span><span className="font-semibold">{fmt$(sp)}</span></div>
+                <div className="flex justify-between text-sm text-stone-600"><span>Seller gets</span><span className="font-semibold">{fmt$(cp)}</span></div>
+                <div className="border-t border-emerald-200 pt-2 flex justify-between text-emerald-700 font-extrabold text-base">
+                  <span>Your Fee</span><span>{fmt$(fee)}</span>
+                </div>
+                {margin && <div className="text-xs text-emerald-600 text-right">{margin}% margin</div>}
+              </div>
+            )}
+            {fee < 0 && cp && sp && <p className="text-red-500 text-sm mt-4">⚠️ Sale price is below contract price — you'd lose money.</p>}
+          </Card>
+
+          <div className="mt-8 max-w-lg">
+            <h3 className="font-bold text-stone-700 mb-3 text-sm">How assignment works</h3>
+            <div className="space-y-3">
+              {[
+                ['1','Get the seller under contract','Sign a purchase agreement at below-market price. Include an assignment clause.'],
+                ['2','Find your buyer','Reach out to your builder list with the property details and your assignment price.'],
+                ['3','Assign the contract','Sign an Assignment of Contract with your buyer. They pay your fee at closing.'],
+                ['4','Close & collect','The title company handles the rest. You never own the land.'],
+              ].map(([n,t,d]) => (
+                <div key={n} className="flex gap-3">
+                  <div className="w-7 h-7 rounded-full bg-amber-400 text-stone-900 font-extrabold text-xs flex items-center justify-center shrink-0 mt-0.5">{n}</div>
+                  <div><div className="font-semibold text-stone-700 text-sm">{t}</div><div className="text-stone-400 text-xs mt-0.5">{d}</div></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Main App ──────────────────────────────────────────────────────────────
+    function App() {
+      const [view, setView]               = useState('public-seller');
+      const [adminUnlocked, setUnlocked]  = useState(false);
+      const [sellers, setSellers]         = useState([]);
+      const [buyers, setBuyers]           = useState([]);
+      const [deals, setDeals]             = useState([]);
+      const [loading, setLoading]         = useState(false);
+      const [modal, setModal]             = useState(null);
+      const [modalSaving, setModalSaving] = useState(false);
+
+      const isPublic = view === 'public-seller' || view === 'public-buyer';
+
+      useEffect(() => {
+        if (adminUnlocked) loadAll();
+      }, [adminUnlocked]);
+
+      const loadAll = async () => {
+        setLoading(true);
+        const [s, b, d] = await Promise.all([
+          db.from('sellers').select('*').order('created_at', { ascending: false }),
+          db.from('buyers').select('*').order('created_at', { ascending: false }),
+          db.from('deals').select('*').order('created_at', { ascending: false }),
+        ]);
+        setSellers((s.data||[]).map(r => ({ id:r.id, name:r.name, phone:r.phone, county:r.county, acres:r.acres, askingPrice:r.asking_price, notes:r.notes, submitted:r.submitted||r.created_at?.slice(0,10) })));
+        setBuyers((b.data||[]).map(r => ({ id:r.id, name:r.name, contact:r.contact, phone:r.phone, email:r.email, counties:r.counties||[], minAcres:r.min_acres, maxBudget:r.max_budget })));
+        setDeals((d.data||[]).map(r => ({ id:r.id, sellerName:r.seller_name, county:r.county, acres:r.acres, contractPrice:r.contract_price, assignFee:r.assign_fee, buyerName:r.buyer_name, stage:r.stage, contractDate:r.contract_date, notes:r.notes })));
+        setLoading(false);
+      };
+
+      const addSeller = async (data) => {
+        await db.from('sellers').insert([{ name:data.name, phone:data.phone, county:data.county, acres:data.acres, asking_price:data.askingPrice, notes:data.notes }]);
+      };
+
+      const addBuyer = async (data) => {
+        await db.from('buyers').insert([{ name:data.name, contact:data.contact, phone:data.phone, email:data.email, counties:data.counties, min_acres:data.minAcres, max_budget:data.maxBudget }]);
+      };
+
+      const saveDeal = async (data) => {
+        setModalSaving(true);
+        const payload = { seller_name:data.sellerName, county:data.county, acres:parseFloat(data.acres)||0, contract_price:parseFloat(data.contractPrice)||0, assign_fee:parseFloat(data.assignFee)||0, buyer_name:data.buyerName||null, stage:data.stage, contract_date:data.contractDate||null, notes:data.notes||null };
+        if (data.id) { await db.from('deals').update(payload).eq('id', data.id); }
+        else          { await db.from('deals').insert([payload]); }
+        await loadAll();
+        setModalSaving(false);
+        setModal(null);
+      };
+
+      const stageChange = async (id, stage) => {
+        await db.from('deals').update({ stage }).eq('id', id);
+        setDeals(ds => ds.map(d => d.id === id ? { ...d, stage } : d));
+      };
+
+      const goAdmin = () => {
+        if (adminUnlocked) { setView('pipeline'); }
+        else { setView('admin-lock'); }
+      };
+
+      const ADMIN_NAV = [
+        { key:'pipeline', label:'Pipeline' },
+        { key:'sellers',  label:`Sellers (${sellers.length})` },
+        { key:'buyers',   label:`Buyers (${buyers.length})` },
+        { key:'calc',     label:'Fee Calc' },
+      ];
+
+      const PUBLIC_NAV = [
+        { key:'public-seller', label:'Sell Land' },
+        { key:'public-buyer',  label:'Buy Land' },
+      ];
+
+      const showPasswordGate = view === 'admin-lock';
+
+      if (showPasswordGate) {
+        return <PasswordGate onUnlock={() => { setUnlocked(true); setView('pipeline'); }} />;
+      }
+
+      return (
+        <div className="min-h-screen bg-stone-50">
+          {/* Top bar */}
+          <div className="bg-stone-900 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+            <div>
+              <span className="text-white font-extrabold text-sm tracking-tight">LandBridge</span>
+              <span className="text-amber-400 text-xs ml-1.5 font-semibold">Georgia</span>
+            </div>
+            <button
+              onClick={isPublic ? goAdmin : () => setView('public-seller')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${!isPublic ? 'bg-amber-400 text-stone-900' : 'text-stone-300 hover:text-white border border-stone-600'}`}
+            >
+              {isPublic ? 'Admin →' : '← Public Site'}
+            </button>
+          </div>
+
+          {/* Sub-nav */}
+          <div className="bg-stone-800 px-4 flex gap-1 overflow-x-auto">
+            {(isPublic ? PUBLIC_NAV : ADMIN_NAV).map(n => (
+              <button key={n.key} onClick={() => setView(n.key)}
+                className={`py-2.5 px-4 text-xs font-bold whitespace-nowrap transition-colors border-b-2 ${view === n.key ? 'border-amber-400 text-amber-400' : 'border-transparent text-stone-400 hover:text-stone-200'}`}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          {isPublic ? (
+            <>
+              {view === 'public-seller' && <SellerPage onSubmit={addSeller} />}
+              {view === 'public-buyer'  && <BuyerPage  onSubmit={addBuyer} />}
+            </>
+          ) : (
+            <div className="max-w-2xl mx-auto px-4 py-6">
+              {view === 'pipeline' && <PipelineView deals={deals} loading={loading} onEdit={d => setModal(d)} onAddDeal={() => setModal({})} onStageChange={stageChange} />}
+              {view === 'sellers'  && <SellersView sellers={sellers} loading={loading} />}
+              {view === 'buyers'   && <BuyersView  buyers={buyers}  loading={loading} />}
+              {view === 'calc'     && <CalcView />}
+            </div>
+          )}
+
+          {/* Deal modal */}
+          {modal !== null && (
+            <DealModal
+              deal={modal.id ? modal : null}
+              saving={modalSaving}
+              onSave={saveDeal}
+              onClose={() => setModal(null)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
